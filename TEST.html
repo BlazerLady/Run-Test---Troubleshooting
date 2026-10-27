@@ -1,0 +1,1809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Runtest Troubleshooting Tool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0f172a; --card:#111827; --accent:#60a5fa; --accent-2:#34d399;
+      --text:#e5e7eb; --muted:#94a3b8; --danger:#f87171; --border:#1f2937; --focus:#fbbf24;
+    }
+    html, body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial, "Noto Sans"; }
+    .wrap { max-width: 1000px; margin: 32px auto; padding: 0 16px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+    .title { font-size: clamp(1.25rem, 2.5vw, 1.75rem); font-weight:700; letter-spacing:.2px; }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; }
+    button, .pill { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 8px 12px; border-radius:10px; cursor:pointer; }
+    button:hover, .pill:hover { border-color: var(--accent); }
+    button:focus { outline: 3px solid var(--focus); outline-offset: 2px; }
+    .card { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)); border:1px solid var(--border); border-radius:16px; padding:20px; box-shadow: 0 8px 18px rgba(0,0,0,0.25); }
+    .question { font-size:1.125rem; font-weight:600; margin: 4px 0 8px; }
+    .content { color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+    .options { display:flex; flex-direction: column; gap: 10px; }
+    .option { display:flex; align-items:center; justify-content:space-between; gap:10px; background: #0b1220; border:1px solid var(--border); border-radius:12px; padding: 12px; }
+    .option .label { font-weight:600; }
+    .option .go { color: var(--accent); font-size:.95rem; }
+    .option:hover { border-color: var(--accent); }
+    .chips { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0; }
+    .chip { background:#0b1220; border:1px solid var(--border); color: var(--muted); font-size:.85rem; padding:4px 8px; border-radius:999px; }
+    .breadcrumb { margin: 10px 0 16px; color: var(--muted); font-size: .9rem; display:flex; flex-wrap:wrap; gap:6px; }
+    .crumb { background:#0b1220; border:1px solid var(--border); border-radius:999px; padding:3px 8px; }
+    .crumb.current { border-color: var(--accent); color: var(--text); }
+    .footer-note { color: var(--muted); font-size:.85rem; margin-top:12px; }
+   
+ 
+    .hidden { display:none !important; }
+    .searchBar { display:flex; gap:8px; margin: 8px 0 12px; }
+    .searchBar input { flex:1; background:#0b1220; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:10px 12px; }
+    .hits { margin-top: 6px; color: var(--muted); font-size:.9rem; }
+    .results { margin-top: 8px; display: grid; gap:8px; }
+    .result { background:#0b1220; border:1px solid var(--border); border-radius:10px; padding:8px 10px; cursor:pointer; }
+    .result:hover { border-color: var(--accent); }
+    @media (min-width: 700px) { .options { flex-direction: row; flex-wrap: wrap; } .option { width: calc(50% - 5px); } }
+  </style>
+</head>
+<body>
+  <div class="wrap" role="application" aria-label="Interactive troubleshooting guide">
+    <header>
+      <div class="title" id="appTitle">Runtest Troubleshooting Tool</div>
+      <div class="controls" role="toolbar" aria-label="Navigation">
+        <button id="backBtn" aria-label="Go back (Alt+←)">&larr; Back</button>
+        <button id="homeBtn" aria-label="Restart guide (Alt+H)">&#8962; Home</button>
+      </div>
+    </header>
+
+    <section class="card" aria-live="polite">
+      <div class="breadcrumb" id="breadcrumb" aria-label="Progress"></div>
+
+      <div class="searchBar" aria-label="Search steps">
+        <input type="search" id="searchInput" placeholder="Search steps or outcomes… (e.g., lockout, capacitor, fuse)" aria-label="Search steps" />
+        <button id="searchClear" aria-label="Clear search">Clear</button>
+      </div>
+      <div class="hits" id="hits"></div>
+      <div class="results hidden" id="results"></div>
+
+      <div class="tag"><span class="dot" aria-hidden="true"></span> <span id="nodeTypeText"></span></div>
+      <h2 class="question" id="question"></h2>
+      <div class="content" id="content"></div>
+
+      <div class="options" id="options" role="list"></div>
+      <div class="chips" id="chips"></div>
+      <div class="footer-note" id="footer"></div>
+    </section>
+  </div>
+
+
+  <script>
+    // =========================
+    // Simplified Decision Tree JSON (based on your .BAT)
+    // =========================
+    const decisionTreeData = {
+      meta: {
+        title: "Runtest Troubleshooting Tool",
+        start: "start",
+        footer: "Use Back / Home to navigate. Search by keywords (e.g., 'lockout', 'capacitor', 'fuse')."
+      },
+      nodes: [
+        {
+          id: "start",
+          title: "What seems to be the problem?",
+          content: "Choose the issue you are facing.",
+          options: [
+            { label: "1) Unit will not start", nextId: "u-start" },
+            { label: "2) High amps", nextId: "water-water" },
+            { label: "3) No 2nd stage", nextId: "no-2nd" },
+            { label: "4) Heating & cooling issues", nextId: "heat-cool" },
+            { label: "5) Fails HI-POT", nextId: "hi-pot" },
+            { label: "6) Unit is in lockout", nextId: "lockout-menu" },
+            { label: "7) Refrigeration Troubleshooting", nextId: "frige" },
+	    { label: "8) Lockout Board LED ID Chart", nextId: "led-id" },
+	    { label: "9) ECM Troubleshooting", nextId: "ecm-troub" },
+	    { label: "10) Exit", nextId: "exit" },
+		
+          ],
+          tags: ["Menu","Start"]
+        },
+
+        // ================= UNIT WILL NOT START =================
+        {
+          id: "u-start",
+          title: "Unit will not start",
+          content: "Is the unit hooked up and/or is the knife switch ON?",
+          options: [
+            { label: "Yes", nextId: "test-jump" },
+            { label: "No", nextId: "u-power-hookup" }
+          ],
+          tags: ["Power","Knife switch"]
+        },
+        {
+          id: "u-power-hookup",
+          title: "Hook up power & turn on knife switch",
+          content: "Connect power. Turn the knife switch ON. Then RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Power"]
+        },
+        {
+          id: "test-jump",
+          title: "Test Jumper",
+          content: "Did you remember to pull the Test Jumper?",
+          options: [ 
+	    { label: "Yes", nextId: "u-capacitor" },
+            { label: "No", nextId: "pull-jump" } 
+	  ], 
+          tags: ["Jumper","Pull Test Jumper"]
+        },
+        {
+          id: "pull-jump",
+          title: "Pull Test Jumper",
+          content: "Pull the Test Jumper. RETEST",
+	  options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Jumper"]
+        },
+        {
+          id: "u-capacitor",
+          title: "Capacitor present and correct?",
+          content: "Verify the capacitor is present, that it is the correct capacitor and that it is properly connected.",
+          options: [
+            { label: "Yes", nextId: "u-tstat-strip" },
+            { label: "No", nextId: "u-cap-wire" }
+          ],
+          tags: ["Capacitor"]
+        },
+        {
+          id: "u-cap-wire",
+          title: "Wire the Capacitor Correctly",
+          content: "Turn the Knife Switch OFF. Look at paperwork and get the right capacitor if needed. Connect the yellow wire from the Contactor to one side of the capacitor and the yellow wire going to the compressor to the other side. (for soft start: contactor lead on one side, the other two together on the other). Turn knife switch ON and RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Capacitor","Soft start"]
+        },
+        {
+          id: "u-tstat-strip",
+          title: "Is the Thermostat strip plugged in?",
+          content: "Confirm the thermostat strip is plugged in and NOT on the accessory side.",
+          options: [
+            { label: "Yes", nextId: "u-24v-r" },
+            { label: "No", nextId: "u-plug-tstat" }
+          ],
+          tags: ["Thermostat"]
+        },
+        {
+          id: "u-plug-tstat",
+          title: "Plug in thermostat strip",
+          content: "Plug in the Thermostat Strip, RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Thermostat"]
+        },
+        {
+          id: "u-24v-r",
+          title: "24V at R on thermostat strip?",
+          content: "Use a voltmeter set to V=. Do you have 24 Volts DC going from C (black wire) to R (red wire) on the T-Stat Strip? Make sure that the Unit is connected to power and it is turned on.",
+          options: [
+            { label: "Yes", nextId: "u-y-call" },
+            { label: "No", nextId: "u-no-24v" }
+          ],
+          tags: ["24V","Meter"]
+        },
+        {
+          id: "u-no-24v",
+          title: "No 24V at R",
+          content: "Check Breakers if the unit has them. Check transformer breaker/fuse. If blown, find cause (often swapped red/black/yellow/orange) reset. Contact Electrical if needed. RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Transformer","Wiring"]
+        },
+        {
+          id: "u-y-call",
+          title: "24V returning on Y call?",
+          content: "Use a voltmeter set to V=.  Do you have 24 Volts DC from C (black wire) to Y1 (yellow wire) on T-Stat Strip? Make sure that the Test Booth is giving the unit a Y call.",
+          options: [
+            { label: "Yes", nextId: "u-lockout-cc" },
+            { label: "No", nextId: "u-3a-fuse" }
+          ],
+          tags: ["Y call"]
+        },
+        {
+          id: "u-3a-fuse",
+          title: "Check 3A fuse on Test Booth",
+          content: "If tripped, reset. Inspect thermostat harness for broken wires and repair. RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["3A fuse","Harness"]
+        },
+        {
+          id: "u-lockout-cc",
+          title: "Lockout board Y→CC pass-through",
+          content: "Using a Volt Meter set to V=. Confirm that there is 24 Volts DC at Y (in) and 24 Volts DC (out) at CC on lockout board. You can use any common (C or black wire) Make sure that the Test Booth is giving the unit a Y call.",
+          options: [
+            { label: "Yes", nextId: "u-cc-continuity" },
+            { label: "No", nextId: "u-change-lockout" }
+          ],
+          tags: ["Lockout board"]
+        },
+        {
+          id: "u-change-lockout",
+          title: "Correct wiring or replace lockout board",
+          content: "Verify correct wire (check continuity T-stat→Y) If it is wrong correct the wiring. If correct wire but no output on CC, replace lockout board. RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Lockout board","Continuity"]
+        },
+        {
+          id: "u-cc-continuity",
+          title: "CC to contactor yellow continuity",
+          content: "Ensure CC wire on the lockout board is same as yellow on low-voltage side of contactor. Use a Volt Meter set to (check continuity / tone). NOTE: make sure that it is on the low voltage side of the contactor and not the high.",
+          options: [
+            { label: "Yes", nextId: "u-comp-plug" },
+            { label: "No", nextId: "u-fix-wires" }
+          ],
+          tags: ["Contactor","Continuity"]
+        },
+        {
+          id: "u-fix-wires",
+          title: "Fix wrong wires",
+          content: "Correct the wiring. RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Wiring"]
+        },
+        {
+          id: "u-comp-plug",
+          title: "Compressor plugged in?",
+          content: "Verify compressor plug is fully seated on the compressor. Can check for bent pins. If a pin is bent over 45 degrees send back for a new compressor others can be carefully straightened.",
+          options: [
+            { label: "Yes", nextId: "u-soft-start" },
+            { label: "No", nextId: "u-plug-comp" }
+          ],
+          tags: ["Compressor"]
+        },
+        {
+          id: "u-plug-comp",
+          title: "Plug in compressor",
+          content: "Plug in compressor, then RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Compressor"]
+        },
+        {
+          id: "u-soft-start",
+          title: "Does the unit have a Soft Start?",
+          content: "If yes, Check paper work to confirm that the correct soft start is used. .",
+          options: [
+            { label: "Yes", nextId: "u-soft-start-wire" },
+            { label: "No", nextId: "u-lockout-q" }
+          ],
+          tags: ["Soft start"]
+        },
+        {
+          id: "u-soft-start-wire",
+          title: "Soft start wired correctly?",
+          content: "If soft-start wiring/part is wrong, rewire/replace Soft Start, then RETEST.",
+          options: [
+            { label: "Wired correctly", nextId: "u-lockout-q" },
+            { label: "Rewire / replace & RETEST", nextId: "start" }
+          ],
+          tags: ["Soft start","Wiring"]
+        },
+        {
+          id: "u-lockout-q",
+          title: "Is the lockout board in lockout?",
+          content: "Check lockout board status.",
+          options: [
+            { label: "Yes", nextId: "lockout-menu" },
+            { label: "No", nextId: "u-3a-ecm" }
+          ],
+          tags: ["Lockout"]
+        },
+        {
+          id: "u-3a-ecm",
+          title: "3A fuse on ECM board blown?",
+          content: "Inspect 3A fuse on ECM board.",
+          options: [
+            { label: "Yes", nextId: "u-replace-3a" },
+            { label: "No", nextId: "u-test-jumper" }
+          ],
+          tags: ["ECM","Fuse"]
+        },
+        {
+          id: "u-replace-3a",
+          title: "Replace 3A fuse (after fixing cause)",
+          content: "Find why it blew (often red/black crossed or damaged/pinched wire). Inspect wiring. Replace 3A fuse. RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Fuse","Wiring"]
+        },
+        {
+          id: "u-test-jumper",
+          title: "Is the test jumper pulled?",
+          content: "Pull the test jumper from lockout board if present, then RETEST.",
+          options: [
+            { label: "Yes (pulled)", nextId: "u-half-volt" },
+            { label: "No (pull it)", nextId: "u-pull-jumper" }
+          ],
+          tags: ["Jumper"]
+        },
+        {
+          id: "u-pull-jumper",
+          title: "Pull test jumper",
+          content: "Remove test jumper on lockout board. RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Jumper"]
+        },
+        {
+          id: "u-half-volt",
+          title: "Half / weird voltage present?",
+          content: "Measure common-to-neutral on harness. ~12V instead of 24V indicates bad common.",
+          options: [
+            { label: "Yes", nextId: "u-check-common" },
+            { label: "No", nextId: "start" }
+          ],
+          tags: ["Voltage"]
+        },
+        {
+          id: "u-check-common",
+          title: "Check common",
+          content: "Measure from 24V= source to common. 24V= is good; otherwise trace incorrect harness connections, correct, and RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Common","Harness"]
+        },
+	
+	//================REFRIGERATION===================
+     {
+  id: "frige",
+  title: "Refrigeration Troubleshooting",
+
+  content: `
+    <table style="border-collapse:collapse; width:100%; text-align:center; 
+      font-family: Arial, sans-serif; background:#fff; color:#e5e7eb;">
+      <thead>
+        <tr>
+          <th colspan="9" style="border:2px solid #141b2c; background:#708090; 
+            color:#111; font-weight:bold; padding:8px;">
+            Refrigeration Troubleshooting Table
+          </th>
+        </tr>
+	
+        <tr style="background:#a9a9a9; color:#111;">
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9; color:#111">Condition</th>
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9 color:#111">Mode</th>
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9; color:#111">Discharge Pressure</th>
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9; color:#111">Suction Pressure</th>
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9; color:#111">Superheat</th>
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9; color:#111">Subcooling</th>
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9; color:#111">Air TD</th>
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9; color:#111">Water TD</th>
+          <th style="border:1px solid #000; padding:6px; background:#a9a9a9; color:#111">Compressor Amps</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+        <tr>
+          <td rowspan="2" style="border:1px solid #000;background:#a9a9a9; color:#111; padding:6px; font-weight:bold; text-align:left;">Under Charge</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Heat</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Cool</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+
+        
+        <tr>
+          <td rowspan="2" style="border:1px solid #000;background:#a9a9a9; color:#111; padding:6px; font-weight:bold; text-align:left;">Over Charge</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Heat</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Cool</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+        </tr>
+
+       
+        <tr>
+          <td rowspan="2" style="border:1px solid #000;background:#a9a9a9; color:#111; padding:6px; font-weight:bold; text-align:left;">Low Air Flow</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Heat</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Cool</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+
+       
+        <tr>
+          <td rowspan="2" style="border:1px solid #000;background:#a9a9a9; color:#111; padding:6px; font-weight:bold; text-align:left;">Low Source Water Flow</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Heat</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Cool</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+        </tr>
+
+        
+        <tr>
+          <td rowspan="2" style="border:1px solid #000;background:#a9a9a9; color:#111; padding:6px; font-weight:bold; text-align:left;">Low Load Water Flow</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Heat</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Cool</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+
+        
+        <tr>
+          <td rowspan="2" style="border:1px solid #000;background:#a9a9a9; color:#111; padding:6px; font-weight:bold; text-align:left;">Restricted TXV</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Heat</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Cool</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+
+        
+        <tr>
+          <td rowspan="2" style="border:1px solid #000;background:#a9a9a9; color:#111; padding:6px; font-weight:bold; text-align:left;">TXV Stuck Open</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Heat</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Cool</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+
+        
+        <tr>
+          <td rowspan="2" style="border:1px solid #000;background:#a9a9a9; color:#111; padding:6px; font-weight:bold; text-align:left;">Inadequate Compression</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Heat</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Cool</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">High/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low/Normal</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">Low</td>
+        </tr>
+      </tbody>
+    </table>
+  `,
+  options: [
+    { label: "Back to start", nextId: "start" }
+  ],
+  tags: ["Refrigeration","Reference"]
+},
+
+        // ================= LOCKOUT MENU =================
+        {
+          id: "lockout-menu",
+          title: "What is the lockout for?",
+          content: "Reference the Lockout Board LED Identification chart for the more common issues and select below. The lights will tell you the issue. Make sure it is not in Hard Lockout. If it is T1, T2, T3 or T4 Fault by itself more than likely you have a bad thermistor. You can tell by swapping out with a resistor or another thermistor wire to try. If that works replace that thermistor wire.",
+          options: [
+	    { label: "Lockout Board LED ID Chart", nextId: "led-id" },           
+	    { label: "High pressure (HP Fault)", nextId: "lockout-hp" },
+            { label: "Low pressure (LP Fault)", nextId: "lockout-lp" },
+            { label: "Flow (FS)", nextId: "lockout-flow" },
+            { label: "Cut out (CO Fault)", nextId: "lockout-cutout" },
+            { label: "T1/T4 swapped", nextId: "lockout-t1t4" },
+            { label: "Back to main menu", nextId: "start" }
+          ],
+          tags: ["Lockout"]
+        },
+     {
+  id: "led-id",
+  title: "LED Identification Table",
+
+  content: `
+    <table style="border-collapse:collapse; width:100%; text-align:center; 
+      font-family: Arial, sans-serif; background:#fff; color:#e5e7eb;">
+      <thead>
+        <tr>
+          <th colspan="9" style="border:2px solid #141b2c; background:#C25A1D; 
+            color:#FFF; font-weight:bold; padding:8px;">
+            LOCKOUT BOARD LED IDENTIFICATION & L TERMINAL STATUS
+          </th>
+        </tr>
+	
+        <tr style="background:#a9a9a9; color:#111;">
+          <th style="border:1px solid #000; padding:6px; background:#FFF; color:#111">CONDITION</th>
+          <th style="border:1px solid #000; padding:6px; background:#FFF; color:#111">GREEN HP</th>
+          <th style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ORANGE LP</th>
+          <th style="border:1px solid #000; padding:6px; background:#FFF; color:#111">RED     FS</th>
+          <th style="border:1px solid #000; padding:6px; background:#FFF; color:#111">YELLOW CO</th>
+          <th style="border:1px solid #000; padding:6px; background:#FFF; color:#111">STATUS GREEN</th>
+          <th style="border:1px solid #000; padding:6px; background:#FFF; color:#111">L TERMINAL </th>
+        </tr>
+      </thead>
+      <tbody>
+  
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">NORMAL MODE</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#000"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#000"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#000"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#000"></td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#000"></td>
+        </tr>  
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">TEST MODE (NOTE 2)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"> </td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"> </td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"> </td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"> </td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"> </td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"> </td>
+        </tr> 
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">HP FAULT</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">HP LOCKOUT</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">ON</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">LP FAULT</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+        </tr>   
+     
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">LP LOCKOUT</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#fff; color:#111">ON</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">SOURCE COIL FRZ/ WF FAULT (T4/FS) (NOTE 3)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">SOURCE COIL FRZ/ WF LOCKOUT (T4/FS) (NOTE 3)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">LOAD / AIR COIL FRZ FAULT (T1) (NOTE 4,5)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">LOAD / AIR COIL FRZ LOCKOUT (T1) (NOTE 4,5)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">CO FAULT (NOTE 5)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">CO LOCKOUT (NOTE 5)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+        </tr>
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">O / U VOLTAGE</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+        </tr>
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">T1 FAULTY (NOTE 5,6)</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">T2 FAULTY (NOTE 5,6)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">T3 FAULTY (NOTE 5,6)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">T4 FAULTY (NOTE 5,6)</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">T1 & T4 SWAPPED (NOTE 7)</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">HOT GAS LINE FAULT>220 DEGREES F (T2) (NOTE 8)</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+        </tr>
+
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#FFF; color:#111; padding:6px; font-weight:bold; text-align:left;">HOT GAS LINE LOCKOUT>220 DEGREES F (T2) (NOTE 8)</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#708090; color:#111"></td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">FLASH</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#111">ON</td>
+        </tr>
+
+  
+  <table style="border-collapse:collapse; width:100%; text-align:center; 
+      font-family: Arial, sans-serif; background:#fff; color:#e5e7eb;">
+      <thead>
+        <tr>
+          <th colspan="3" style="border:2px solid #141b2c; background:#C25A1D; 
+            color:#FFF; font-weight:bold; padding:8px;">
+            LOCKOUT BOARD JUMPERS
+          </th>
+        </tr>
+        <tr style="background:#fff; color:#111;">
+          <th style="border:1px solid #000; padding:6px; background:#fff; color:#111">JUMPER</th>
+          <th style="border:1px solid #000; padding:6px; background:#fff; color:#111">INSTALLED</th>
+          <th style="border:1px solid #000; padding:6px; background:#fff; color:#111">REMOVED</th>
+      </thead>
+      <tbody>
+  
+
+	<tr>
+          <td rowspan="1" style="border:1px solid #000;background:#fff; color:#111; padding:6px; font-weight:bold; text-align:left;">FS</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#000">T1 & T4 MONITORED FOR FLOW - FS TERMINALS IGNORED</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#000">FS TERMINALS USED FOR FLOW SWITCH - T1 & T4 IGNORED</td>
+        </tr>  
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#fff; color:#111; padding:6px; font-weight:bold; text-align:left;">A-FRZ</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#000">OPEN LOOP MODE - 30 DEGREE F SETTING FOR T4</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#000">CLOSED LOOP MODE - 15 DEGREE F SETTING FOR T4</td>
+        </tr> 
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#fff; color:#111; padding:6px; font-weight:bold; text-align:left;">TEST</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#000">OPERATES IN NORMAL MODE WITH STANDARD DELAYS</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#000">OPERATES IN TEST MODE WITH DELAYS SPED UP</td>
+        </tr> 
+        <tr>
+          <td rowspan="1" style="border:1px solid #000;background:#fff; color:#111; padding:6px; font-weight:bold; text-align:left;">O/V</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#000">FEATURE IS ACTIVE</td>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; color:#000">FEATURE IS INACTIVE</td>
+        </tr> 
+
+          <table style="border-collapse:collapse; width:100%; text-align:CENTER; 
+      font-family: Arial, sans-serif; background:#fff; color:#e5e7eb;">
+      <thead>
+        <tr>
+          <th colspan="1" style="border:2px solid #141b2c; background:#C25A1D; 
+            color:#FFF; font-weight:bold; padding:8px;">
+            NOTES
+          </th>
+	</tr>
+        <tr>
+          <td style="border:1px solid #000; padding:6px; background:#FFF; text-align:left; color:#111">1. THE 'L' ERMINAL CONTROLS A FAULT LED AT THE THERMOSTAT OR DRIVES AN AUXILIARY FAULT RELAY.</td>
+	</tr> 
+        <tr>
+	  <td style="border:1px solid #000; padding:6px; background:#FFF; text-align:left; color:#111">2. WHEN THE TEST JUMPER IS PULLED, GREEN STATUS LED WILL BE OFF.</td>
+        </tr> 
+        <tr>
+	  <td style="border:1px solid #000; padding:6px; background:#FFF; text-align:left; color:#111">3. DEPENDING UPON MODEL, THE SOURCE COIL FRZ. WATER FLOW FAULT OR LOCKOUT CAN BE AN INTERNAL OR EXTERNAL FLOW SWITCH (FS), 		OR A SENSOR (T4) LOCATED BETWEEN THE TXV AND SOURCE COIL.</td>
+        </tr> 
+        <tr>
+	  <td style="border:1px solid #000; padding:6px; background:#FFF; text-align:left; color:#111">4. THE LOAD / AIR COIL FREEZE PROTECTION SENSOR IS LOCATED BERWEEN THE TXV AND LOAD/AIR COIL.</td>
+        </tr> 
+        <tr>
+	  <td style="border:1px solid #000; padding:6px; background:#FFF; text-align:left; color:#111">5. NOT ALL MODELS HAVE THIS FEATURE.</td>
+        </tr> 
+        <tr>
+	  <td style="border:1px solid #000; padding:6px; background:#FFF; text-align:left; color:#111">6. THIS FAULT INDICATES A BAD SENSOR (OPEN, SHORTED, OR DISCONNECTED).</td>
+        </tr> 
+        <tr>
+	  <td style="border:1px solid #000; padding:6px; background:#FFF; text-align:left; color:#111">7. THIS CAN ONLY BE CHECKED WHILE IN TEST MODE.</td>
+        </tr> 
+        <tr>
+	  <td style="border:1px solid #000; padding:6px; background:#FFF; text-align:left; color:#111">8. HOT GAS LINE IS TOO HOT.</td>
+        </tr> 
+        <tr>
+      </tbody>
+    </table>
+  `,
+  options: [
+    { label: "Back to start", nextId: "start" },
+    { label: "Lockout Menu", nextId: "lockout-menu" }
+  ],
+  tags: ["Lockout","Codes"]
+},
+        {
+          id: "lockout-hp",
+          title: "High Pressure Lockout",
+          content: "Is the Blower working?",
+          options: [
+            { label: "Yes", nextId: "lockout-hp1" },
+            { label: "No", nextId: "check-blow" }
+          ],
+          tags: ["HP","Blower"]
+        }, 
+        {
+          id: "check-blow",
+          title: "Blower is NOT working.",
+          content: "Is the connector plugged in and fully seated at the blower motor? (If it is a plug in make sure no wires are pushed out of the connector. If this is a PSC you may have to remove a cover to check also make sure that the right fan speed is selected).",
+          options: [
+            { label: "Yes", nextId: "right-way" },
+            { label: "No", nextId: "change-wire" }
+          ],
+          tags: ["HP","Blower"]
+        },
+        {
+          id: "change-wire",
+          title: "Plug NOT seated or pins pushed out. Possibly connector wired wrong",
+          content: "If the connector is not plugged into the motor, plug it in and RETEST. If the pin is pushed out try to push it back in but make sure that it stays in position. If it does RETEST. If not replace the harness. Grab another harness from Electrical or look up the wiring diagram and see if the harness is wired incorrectly. If it is replace or get someone with experience to correct. RETEST.",
+          options: [
+            { label: "Back to Start", nextId: "start" },
+          ],
+          tags: ["HP","Blower"]
+        },
+        {
+          id: "right-way",
+          title: "Is the Blower spinning the right way?",
+          content: "Remove the door if you need to. Look at the direction the blower spins when the unit starts up. If the outlet is on the right side, your blower should be spinning counter clockwise. If your outlet is on the left side, your blower should be spinning clockwise. Is the Blower spinning the right way? NOTE: This is also a good place to check if the set screw is tight against the blower shaft",
+          options: [
+            { label: "Yes", nextId: "lockout-hp1" },
+            { label: "No", nextId: "psc" }
+          ],
+          tags: ["HP","Blower"]
+        },
+        {
+          id: "psc",
+          title: "Is the Blower a PSC?",
+          content: "Is the Blower a PSC?",
+          options: [
+            { label: "Yes", nextId: "rotation" },
+            { label: "No", nextId: "ha-blower-program" }
+          ],
+          tags: ["HP","Blower","PSC"]
+        }, 
+        {
+          id: "rotation",
+          title: "How to change motor direction on a PSC motor",
+          content: "Look for set of Yellow and Orange wires that are just off the motor. They will have a male and female spade connector breaking the circuit. If Orange is to Orange just simply unplug the Orange from itself and unplug the yellow from itself and then plug one of the Orange wires into one of the Yellow. Repeat for the remaining two wires. You blower will now spin the other direction.",
+          options: [
+            { label: "Yes", nextId: "lockout-hp" },
+            { label: "No", nextId: "blower" }
+          ],
+          tags: ["HP","Blower","PSC"]
+        },        
+	 {
+          id: "lockout-hp",
+          title: "Check Wiring",
+          content: "Check the wiring on the PSC blower relay, verify wiring: G from T-stat goes to position 0; Common (black from lockout board) to position 1; L1 to position 8; L2 to position 4; Blower harness white→2 and speed lead (black/yel/blue/red)→6. Use correct speed. NEVER place PSC harness on 3 & 7.",
+          options: [
+            { label: "Wiring corrected / OK", nextId: "lockout-hp1" },
+            { label: "Fix PSC wiring", nextId: "lockout-psc-fix" }
+          ],
+          tags: ["HP","PSC","Blower"]
+        },
+        {
+          id: "lockout-psc-fix",
+          title: "Fix PSC blower relay wiring",
+          content: "Correct per wiring diagram. RETEST.",
+          options: [ { label: "Back to lockout menu", nextId: "lockout-menu" } ],
+          tags: ["PSC","Wiring"]
+        },
+        {
+          id: "lockout-hp1",
+          title: "Does The Unit Have Water?",
+          content: "Make sure that you have water going to the Unit.",
+          options: [ 
+	    { label: "Yes, It has water.", nextId: "lockout-hp2" }, 
+	    { label: "No, It does not have water.", nextId: "water" } ],
+          tags: ["HP","water"]
+        }, 
+        {
+          id: "water",
+          title: "Does this fix the problem?",
+          content: "Make sure the correct valves are open and that your hoses are hooked up correctly. If you do not have water water comming to the unit after you checked that hoses are right and valves are open, check the pump by the test tank. Probably tripped, Reset. RETEST.",
+          options: [ { label: "Back to Start.", nextId: "start" } ],
+          tags: ["HP","water"]
+        },        
+	{
+          id: "lockout-hp2",
+          title: "HP Switch & Harness Checks",
+          content: "Jump HP1–HP2 on lockout board with grey jumper wire: if unit runs, issue is switch or harness (ohm harness). If unit does not run, replace lockout board. Check continuity of HP switch (should signal with refrigerant present). With the unit running with a jumper wire, use a volt meter and check the continuity. If it cuts out that means the switch is working and something else is the problem. If the unit runs fine and the switch doesn't cut out look at the harness going from the Lockout Board to the switch. It might be damaged or melted.",
+          options: [ { label: "Back to lockout menu", nextId: "lockout-menu" } ],
+          tags: ["HP","Continuity","Lockout board"]
+        },
+        {
+          id: "lockout-lp",
+          title: "Low pressure lockout",
+          content: "Check continuity of LP switch. Jumper LP1–LP2: if unit runs, issue is switch or harness (ohm harness).",
+          options: [ { label: "Back to lockout menu", nextId: "lockout-menu" } ],
+          tags: ["LP","Continuity"]
+        },
+        {
+          id: "lockout-flow",
+          title: "Flow lockout",
+          content: "If flow switch present, ensure arrow direction is correct. If NO flow switch, ensure FS jumper is on lockout board; if there IS a flow switch, remove the FS jumper.",
+          options: [ { label: "Back to lockout menu", nextId: "lockout-menu" } ],
+          tags: ["Flow","FS jumper"]
+        },
+        {
+          id: "lockout-cutout",
+          title: "Cut out lockout",
+          content: "Check drain pan: ensure connectors are not touching and wires are not melted.",
+          options: [ { label: "Back to lockout menu", nextId: "lockout-menu" } ],
+          tags: ["Cut out","Drain pan"]
+        },
+        {
+          id: "lockout-t1t4",
+          title: "T1/T4 swapped lockout",
+          content: "If unit has a flow switch, remove FS jumper. Place a 10k resistor in either T1 or T4: if fixed, replace bad thermistor lead; if not, replace lockout board.",
+          options: [ { label: "Back to lockout menu", nextId: "lockout-menu" } ],
+          tags: ["Thermistor","T1/T4"]
+        },
+
+        // ================= HIGH AMPS =================
+          {
+          id: "high-amps",
+          title: "High amps",
+          content: "Has the unit already made it through High?",
+          options: [
+            { label: "Yes", nextId: "ha-dipswitch" },
+            { label: "No", nextId: "ha-manual" }
+          ],
+          tags: ["Amps"]
+        },      {
+          id: "high-amps",
+          title: "High amps",
+          content: "Has the unit already made it through High?",
+          options: [
+            { label: "Yes", nextId: "ha-dipswitch" },
+            { label: "No", nextId: "ha-manual" }
+          ],
+          tags: ["Amps"]
+        },
+        {
+          id: "ha-manual",
+          title: "Manual mode test",
+          content: "Put the Test Booth in Manual. Toggle Y2 on/off. Did amps change?",
+          options: [
+            { label: "Yes (change)", nextId: "ha-dipswitch" },
+            { label: "No (no change)", nextId: "ha-unplug-2nd" }
+          ],
+          tags: ["Manual","Y2"]
+        },
+        {
+          id: "ha-unplug-2nd",
+          title: "Unplug 2nd stage at compressor",
+          content: "Unplug 2nd-stage compressor plug. Do amps change?",
+          options: [
+            { label: "Yes", nextId: "ha-24v-plug" },
+            { label: "No", nextId: "ha-solenoid" }
+          ],
+          tags: ["2nd stage","Compressor"]
+        },
+        {
+          id: "ha-24v-plug",
+          title: "24V DC at 2nd-stage plug?",
+          content: "Measure DC at the plug (meter set to DC).",
+          options: [
+            { label: "Yes", nextId: "ha-dipswitch" },
+            { label: "No", nextId: "ha-replace-2nd-harness" }
+          ],
+          tags: ["24V DC"]
+        },
+        {
+          id: "ha-solenoid",
+          title: "2nd-stage solenoid stuck",
+          content: "Gently tap compressor while running or build head pressure (momentarily restrict water) while toggling 2nd stage. If it won't free, send back for NEW compressor (solenoid stuck).",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Solenoid","Compressor"]
+        },
+        {
+          id: "ha-replace-2nd-harness",
+          title: "Replace 2nd-stage harness",
+          content: "Check at ECM that no insulation is under screws; inspect compressor prongs are straight and making contact. If still no 24V DC at plug, replace 2nd-stage harness.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Harness","2nd stage"]
+        },
+        {
+          id: "ha-dipswitch",
+          title: "ECM dip switch settings correct?",
+          content: "Verify dip switch configuration on ECM board.",
+          options: [
+            { label: "Yes", nextId: "ha-blower-program" },
+            { label: "No", nextId: "ha-set-dip" }
+          ],
+          tags: ["ECM","Dip switches"]
+        },
+        {
+          id: "ha-set-dip",
+          title: "Set correct dip switches",
+          content: "Set ECM dip switches per spec, then RETEST.",
+          options: [ { label: "Continue", nextId: "ha-blower-program" } ],
+          tags: ["Dip switches"]
+        },
+        {
+          id: "ha-blower-program",
+          title: "Correct blower motor program installed?",
+          content: "Confirm ECM board is programmed for the correct blower profile.",
+          options: [
+            { label: "Yes", nextId: "ha-blower-motor" },
+            { label: "No", nextId: "ha-reprogram" }
+          ],
+          tags: ["Blower","Program"]
+        },
+        {
+          id: "ha-reprogram",
+          title: "Reprogram ECM / replace",
+          content: "Reprogram ECM board (or swap for correctly programmed). RETEST.",
+          options: [ { label: "Continue", nextId: "ha-blower-motor" } ],
+          tags: ["ECM","Program"]
+        },
+        {
+          id: "ha-blower-motor",
+          title: "Correct blower motor installed?",
+          content: "Verify the installed blower motor matches spec.",
+          options: [
+            { label: "Yes", nextId: "ha-blower-harness" },
+            { label: "No", nextId: "ha-replace-blower" }
+          ],
+          tags: ["Blower"]
+        },
+        {
+          id: "ha-replace-blower",
+          title: "Replace blower motor",
+          content: "Install correct blower motor. RETEST.",
+          options: [ { label: "Continue", nextId: "ha-blower-harness" } ],
+          tags: ["Blower"]
+        },
+        {
+          id: "ha-blower-harness",
+          title: "Blower harness wired correctly?",
+          content: "Inspect harness wiring. If wired wrong, replace faulty harness (scrap as 'wired wrong from vendor').",
+          options: [
+            { label: "Yes", nextId: "ha-cfm" },
+            { label: "No", nextId: "ha-replace-harness" }
+          ],
+          tags: ["Harness","Blower"]
+        },
+        {
+          id: "ha-replace-harness",
+          title: "Replace faulty harness",
+          content: "Replace harness and RETEST.",
+          options: [ { label: "Continue", nextId: "ha-cfm" } ],
+          tags: ["Harness"]
+        },
+        {
+          id: "ha-cfm",
+          title: "CFM matches unit size?",
+          content: "Count green LED flashes on ECM (each flash ≈ 100 CFM). Approx. 400 CFM per ton (e.g., 2 ton ≈ 800 CFM / 8 flashes).",
+          options: [
+            { label: "Yes (matches)", nextId: "resolved" },
+            { label: "No (low/high)", nextId: "ha-replace-ecm" }
+          ],
+          tags: ["CFM","ECM"]
+        },
+        {
+          id: "ha-replace-ecm",
+          title: "Replace ECM board",
+          content: "Verify that the switches are set correct. If not then correct and RETEST. If they are set correctly Replace ECM board and set dip switches. RETEST. Document as faulty ECM failed CFM.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["ECM"]
+        },
+        {
+          id: "water-water",
+          title: "High Amps",
+          content: "Is the Unit a water to water? (BS, BT, WS, WT) ",
+          options: [
+            { label: "Yes", nextId: "valve" },
+            { label: "No", nextId: "high-amps" }
+	 ],
+          tags: ["Water", "W2W"]
+        },
+        {
+          id: "valve",
+          title: "High Amps on Water to Water",
+          content: "Do you have the Bottom Valve on the Test Booth turned to the WATER-TO-WATER position?",
+          options: [
+            { label: "Yes", nextId: "high-amps" },
+            { label: "No", nextId: "open-valve" }
+	 ],
+          tags: ["valve", "Water", "W2W"]
+        },
+        {
+          id: "open-valve",
+          title: "Water-Water Valve",
+          content: "Turn the valve to the WATER-TO-WATER position and RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Valve"]
+        },
+
+        // ================= NO 2ND STAGE =================
+        {
+          id: "no-2nd",
+          title: "No 2nd stage",
+          content: "Is the 2nd-stage harness plugged in at both compressor and ECM board?",
+          options: [
+            { label: "Yes", nextId: "no2-24v-y2" },
+            { label: "No", nextId: "no2-connect" }
+          ],
+          tags: ["2nd stage","Harness"]
+        },
+        {
+          id: "no2-connect",
+          title: "Connect 2nd-stage harness",
+          content: "Connect at ECM and compressor. Ensure no insulation under ECM screws. RETEST.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Harness"]
+        },
+        {
+          id: "no2-24v-y2",
+          title: "24V at Y2 on ECM?",
+          content: "Measure ~24 VAC at Y2 call on ECM.",
+          options: [
+            { label: "Yes", nextId: "no2-24v-plug" },
+            { label: "No", nextId: "no2-broken" }
+          ],
+          tags: ["Y2","24V"]
+        },
+        {
+          id: "no2-24v-plug",
+          title: "24V DC at 2nd-stage plug?",
+          content: "Measure DC at 2nd-stage compressor plug.",
+          options: [
+            { label: "Yes", nextId: "no2-solenoid" },
+            { label: "No", nextId: "no2-broken" }
+          ],
+          tags: ["24V DC","Plug"]
+        },
+        {
+          id: "no2-solenoid",
+          title: "Solenoid likely stuck",
+          content: "Try building pressure (disable HV fan briefly) and toggle 2nd stage; lightly tap compressor. If it frees, cycle a few times and RETEST. If not, send unit back for new compressor.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Solenoid","Compressor"]
+        },
+        {
+          id: "no2-broken",
+          title: "Broken wires in test-booth T-stat harness?",
+          content: "Inspect and repair any broken wires.",
+          options: [
+            { label: "Yes (repaired)", nextId: "resolved" },
+            { label: "No", nextId: "no2-insulation" }
+          ],
+          tags: ["Harness","Repair"]
+        },
+        {
+          id: "no2-insulation",
+          title: "Insulation under ECM screws?",
+          content: "If insulation is under the terminal screws, loosen and pull wire out slightly.",
+          options: [
+            { label: "Fixed", nextId: "resolved" },
+            { label: "Not the issue", nextId: "no2-prongs" }
+          ],
+          tags: ["ECM","Harness"]
+        },
+        {
+          id: "no2-prongs",
+          title: "Compressor prongs bent or painted?",
+          content: "If painted, gently scrape and replace plug; if bent < 45°, bend back; if > 45°, send compressor back.",
+          options: [
+            { label: "Fixed", nextId: "resolved" },
+            { label: "Still not working", nextId: "no2-ohm" }
+          ],
+          tags: ["Compressor","Prongs"]
+        },
+        {
+          id: "no2-ohm",
+          title: "Ohm out compressor",
+          content: "Use voltmeter in ohms. Expected around ~0.380 Ω. Does it read ~0.380?",
+          options: [
+            { label: "Yes (~0.380)", nextId: "no2-prongs" },
+            { label: "No (bad)", nextId: "no2-badcomp" }
+          ],
+          tags: ["Ohms","Compressor"]
+        },
+        {
+          id: "no2-badcomp",
+          title: "Bad compressor",
+          content: "Compressor is bad. Send back for a new one.",
+          options: [ { label: "Back to start", nextId: "start" } ],
+          tags: ["Compressor"]
+        },
+
+	// ================= Heating & Cooling Issues =================
+       	{
+          id: "heat-cool",
+          title: "Heating & Cooling Issues",
+          content: "Choose the issue you are facing.",
+          options: [
+            { label: "Only Does Heating", nextId: "ODH" },
+            { label: "Heating In Cooling and Cooling In Heating", nextId: "HICCIH" },
+            { label: "Will NOT Heat Or Cool", nextId: "WNHOC" },
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+	{
+          id: "ODH",
+          title: "Does The Reversing Valve Work?",
+          content: "",
+          options: [
+            { label: "Yes", nextId: "HCY" },
+            { label: "No", nextId: "HCN" },
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+        {
+          id: "HCY",
+          title: "Yes, The Reversing Valve Works",
+          content: "The Problem Is Likely A Stuck TXV. <br><br> Send Back To Replace TXV.", 
+	  options: [
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+        {
+          id: "HCN",
+          title: "Check To Make Sure That The Reversing Valve Is Plugged In. ",
+          content: " <br> Locate The Magnet On The Side Of The Reversing Valve?<br><br> Is There An Orange And Orange With Black Wires Plugged Into The Magnet?<br><br> This Could Also Be 2 Orange Wires.",
+          options: [
+            { label: "Yes", nextId: "RVY" },
+            { label: "No", nextId: "RVN" },
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+        {
+          id: "RVY",
+          title: "Check The T-Stat Wires Comming From The Test Booth. ",
+          content: " <br> Use A Volt Meter Set To V~ And See If You Have 24V Going From Your Common 'C' To your 24V 'R' On Your T-Stat.<br> Inspect The Wires At The Connectors From The Test Booth To See If They Are Broken.<br><br> If You Find A Broken Wire, Repair Or Get With Your Supervisor To Repair. Make Sure Power Is Off First.",
+          options: [
+            { label: "Yes", nextId: "RVY" },
+            { label: "No", nextId: "RVN" },
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+        {
+          id: "RVN",
+          title: "Plug The Wires In And Retest. ",
+          content: " <br> Make Sure To Plug In The Correct Wires And Retest The Unit",
+          options: [
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },	 {
+          id: "HICCIH",
+          title: "Check To See If The Reversing Valve Is Plummed Correctly.",
+          content: "<br>Look At The Magnet Side Of The Reversing Valve.<br> The Left Leg Should Be Going To The Air Coil.<br> The Right Leg Should Be Going To The Water Coil.<br><br> Is The Reversing Valve Plummed Correctly?",
+	     
+	  options: [
+            { label: "Yes", nextId: "ODH" },
+            { label: "No", nextId: "HICCIHN" },
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+	 {
+          id: "HICCIHN",
+          title: "Reversing Valve Plummed Wrong",
+          content: "Send Back To Rework The Reversing Valve For Being Plummed Wrong.",
+          options: [
+            { label: "Yes", nextId: "HCN" },
+            { label: "No", nextId: "HICCIHN" },
+            { label: "Will NOT Heat Or Cool", nextId: "WNHOC" },
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+	 {
+          id: "WNHOC",
+          title: "Will Not Heat Or Cool",
+          content: "Is The Board In Lockout?",
+          options: [
+            { label: "Yes", nextId: "lockout-menu" },
+            { label: "No", nextId: "WNHOC1" },
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+	 {
+          id: "WNHOC1",
+          title: "Will Not Heat Or Cool",
+          content: "Does The Reversing Valve Work?",
+          options: [
+            { label: "Yes", nextId: "ODH" },
+            { label: "No", nextId: "HICCIH" },
+	    { label: "Back to start", nextId: "start" } ],	
+          tags: ["Heat","Cool"]
+        },
+
+//================ECM TROUBLESHOOTING===================
+  {
+  id: "ecm-troub",
+  content: `
+	<table style="border-collapse:collapse; width:100%; text-align:left; font-family:Arial, sans-serif; background:#fff; color:#000;">
+  	<thead>
+   	 <tr>
+     	 <th colspan="5" style="border:2px solid #141b2c; background:#708090; color:#111; font-weight:bold; padding:8px;">
+       	 ECM BOARD TROUBLESHOOTING TABLE
+      </th>
+    </tr>
+
+    <tr style="background:#a9a9a9; color:#111;">
+      <th style="border:1px solid #000; padding:6px;">LED State Name</th>
+      <th style="border:1px solid #000; padding:6px;">Green LED Behavior</th>
+      <th style="border:1px solid #000; padding:6px;">Red LED Behavior</th>
+      <th style="border:1px solid #000; padding:6px;">Causes Mitigation Mode</th>
+      <th style="border:1px solid #000; padding:6px;">Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+
+   
+    <tr style="background:#c6edfb;">
+      <td style="border:1px solid #000; padding:6px;">Off / Not Programmed</td>
+      <td style="border:1px solid #000; padding:6px;">OFF</td>
+      <td style="border:1px solid #000; padding:6px;">OFF</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">The board is either not actually powered or it is powered, but does not have any firmware.<br><strong>Solution:</strong> Check power, replace ECM board.</td>
+    </tr>
+
+    
+    <tr style="background:#c6edfb;">
+      <td style="border:1px solid #000; padding:6px;">In Bootloader</td>
+      <td style="border:1px solid #000; padding:6px;">Rapid Flashing</td>
+      <td style="border:1px solid #000; padding:6px;">OFF</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">The board is in the bootloader state. This lasts ~30 seconds.</td>
+    </tr>
+
+   
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Running, No Blower Configuration</td>
+      <td style="border:1px solid #000; padding:6px;">Ping-Pong</td>
+      <td style="border:1px solid #000; padding:6px;">Ping-Pong</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">The board is running and the green/red LEDs are ping-ponging. This indicates the board has firmware and is running, but there is no blower configuration applied. The board will do nothing in this state.<br><strong>Solution:</strong> Replace ECM board.</td>
+    </tr>
+
+    
+    <tr style="background:#c6edfb;">
+      <td style="border:1px solid #000; padding:6px;">Running, Mitigation Enabled</td>
+      <td style="border:1px solid #000; padding:6px;">Flashes 5 Times</td>
+      <td style="border:1px solid #000; padding:6px;">OFF</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">If the board recognizes it is mitigation enabled, the green LED will flash slowly 5 times on power up after the bootloader is complete.</td>
+    </tr>
+
+    
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Running, Telling Blower Not to Run</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">OFF</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">There are no errors, the board is communicating with the motor (and mitigation sensors if applicable) and the board is telling the motor not to run.</td>
+    </tr>
+
+    
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Running, Asking Motor to Run</td>
+      <td style="border:1px solid #000; padding:6px;">Flashes once per 100 CFM demand</td>
+      <td style="border:1px solid #000; padding:6px;">OFF</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">There are no errors and the board is asking the motor to run.</td>
+    </tr>
+
+    
+    <tr>
+      <td colspan="5" style="border:1px solid #000; padding:6px; font-weight:bold; background:#e0e0e0; color:#111;">
+        Error Modes (If the ECM board is mitigation enabled, power to all controls will be shut off and the blower will be told to run at max speed) (Some exceptions apply as stated in the Notes column)
+      </td>
+    </tr>
+
+   
+    <tr style="background:#c6edfb;">
+      <td style="border:1px solid #000; padding:6px;">Mitigation Sensor Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 1 × every 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">YES</td>
+      <td style="border:1px solid #000; padding:6px;">The mitigation enabled board either can’t talk to the mitigation sensors, the sensors report a refrigerant leak, or the sensors report an internal error.<br><strong>Solution:</strong> Fix leak and ventilate cabinet, replace sensor and or harness if that doesn’t fix.</td>
+    </tr>
+
+    
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Blower Communication Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 2 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">YES</td>
+      <td style="border:1px solid #000; padding:6px;">The board is unable to communicate with the blower motor.<br><strong>Solution:</strong> Check Blower Motor Harness/Replace Motor.</td>
+    </tr>
+
+    
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Incomplete Parameters Error</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing once per 100 CFM demand</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 3 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">The motor reports that the ECM board has not fully configured the motor. <br><strong>Solution:</strong> Power Cycle/Check Harness/Replace ECM Board/Replace Motor.</td>
+    </tr>
+
+    
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Locked Rotor Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 4 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">YES</td>
+      <td style="border:1px solid #000; padding:6px;">The motor reports it has a locked rotor.<br><strong>Solution:</strong> Check Blower Motor Harness.</td>
+    </tr>
+
+    
+    <tr style="background:#c0c0c0;">
+      <td style="border:1px solid #000; padding:6px;">Power Limit Error</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing once per 100 CFM demand</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 5 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">The motor reports it is pulling too much power and will limit its effort to meet the requested.<br><strong>Solution:</strong> Check Power and Ductwork.</td>
+    </tr>
+
+    
+    <tr style="background:#c0c0c0;">
+      <td style="border:1px solid #000; padding:6px;">Temperature Limit Error</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing once per 100 CFM demand</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 6 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">The motor reports it’s temperature is too high and will limit its effort to meet the requested CFM.<br><strong>Solution:</strong> Check Ductwork.</td>
+    </tr>
+
+    
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Lost Rotor Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 7 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">YES</td>
+      <td style="border:1px solid #000; padding:6px;">The motor reports a lost rotor condition.<br><strong>Solution:</strong> Check Rotor.</td>
+    </tr>
+
+    
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Over Current Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 8 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">YES</td>
+      <td style="border:1px solid #000; padding:6px;">The motor reports an over current condition and will not run.<br><strong>Solution:</strong> Check Power/Replace Blower.</td>
+    </tr>
+
+   
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Over Voltage Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 9 × 3 seconds</td>
+      <td style="border:1px solid:#000; padding:6px;">YES</td>
+      <td style="border:1px solid:#000; padding:6px;">The motor reports and over voltage condition and will not run.<br><strong>Solution:</strong> Check Power/Replace Blower.</td>
+    </tr>
+
+    
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Under Voltage Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 10 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">YES</td>
+      <td style="border:1px solid #000; padding:6px;">The motor reports and under voltage condition and will not run.<br><strong>Solution:</strong> Check Power/Replace Blower.</td>
+    </tr>
+
+   
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Over Temperature Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 11 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">YES</td>
+      <td style="border:1px solid #000; padding:6px;">The motor has reached its temperature cutout and will not run.<br><strong>Solution:</strong> Check Power/Replace Blower.</td>
+    </tr>
+
+   
+    <tr style="background:#c0c0c0;">
+      <td style="border:1px solid #000; padding:6px;">Speed Limit Error</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing once/100 CFM</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 12 × 3 seconds
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">The motor is in a speed limit condition.<br><strong>Solution:</strong> Check Ductwork.</td>
+    </tr>
+
+   
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Torque Limit Error</td>
+      <td style="border:1px solid #000; padding:6px;">ON</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 13 x 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">YES</td>
+      <td style="border:1px solid #000; padding:6px;">The motor is limiting operation due to over torque but will continue to run.<br><strong>Solution:</strong> Check Ductwork.</td>
+    </tr>
+
+   
+    <tr>
+      <td style="border:1px solid #000; padding:6px;">Undesired Parameter Error</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing once/100 CFM</td>
+      <td style="border:1px solid #000; padding:6px;">Flashing 14 × 3 seconds</td>
+      <td style="border:1px solid #000; padding:6px;">NO</td>
+      <td style="border:1px solid #000; padding:6px;">The motor did not like what we told it to do. It will continue to run in whatever state is was in.<br><strong>Solution:</strong> Power Cycle/Check Blower Harness/Replace ECM board/Replace Blower.</td>
+    </tr>
+
+  </tbody>
+</table>
+  `,
+  options: [
+    { label: "Back to start", nextId: "start" },
+    { label: "Lockout Menu", nextId: "lockout-menu" }
+  ],
+  tags: ["Lockout","Codes"]
+},
+
+
+        // ================= PLACEHOLDERS =================
+
+        {
+          id: "hi-pot",
+          title: "Fails HI-POT (placeholder)",
+          content: "This section wasn't defined in the .BAT. We can add your exact HI-POT diagnostic steps (e.g., isolate circuits, megger tests, leakage path inspection).",
+          options: [
+            { label: "Back to main menu", nextId: "start" }
+          ],
+          tags: ["TODO"]
+        },
+
+
+
+
+        // ================= OUTCOMES =================
+        {
+          id: "resolved",
+          title: "Outcome: Issue resolved",
+          content: "Great! Document what fixed it. You can restart for another test.",
+          tags: ["Outcome","Success"]
+        },
+        {
+          id: "exit",
+          title: "Exit",
+          content: "You can now close this tab or use Home to restart.",
+          tags: ["Exit"]
+        }
+      ]
+    };
+
+    // =========================
+    // App State & Helpers
+    // =========================
+    const historyStack = [];
+    let currentNodeId = null;
+
+    function $(id){ return document.getElementById(id); }
+    function getNodeById(id){ return decisionTreeData.nodes.find(n => n.id === id); }
+    function isEndNode(node){ return !node.options || node.options.length === 0; }
+   function sanitize(html){
+  // Escape everything first
+  const div = document.createElement('div');
+  div.textContent = html || "";
+  let safe = div.innerHTML;
+
+  // Allow a small, explicit whitelist of tags we trust in our own content
+  // (block-level) table, thead, tbody, tr, th, td, caption, br
+  // (inline) strong, em, code, a
+  const allow = /<(\/?)(table|thead|tbody|tr|th|td|caption|br|strong|em|code|a)(\s[^>]*)?>/gi;
+
+  // Re-insert allowed tags by replacing their escaped versions
+  // Note: the browser will still parse attributes; do not insert untrusted user input.
+  safe = safe
+    .replace(/&lt;(\/?)(table|thead|tbody|tr|th|td|caption|br|strong|em|code|a)(\s[^&]*)&gt;/gi, '<$1$2$3>')
+    .replace(/&lt;(\/?)(table|thead|tbody|tr|th|td|caption|br|strong|em|code|a)&gt;/gi, '<$1$2>');
+
+  return safe;
+}
+
+
+    function renderBreadcrumb() {
+      const el = $("breadcrumb");
+      el.innerHTML = "";
+      const trail = historyStack.concat(currentNodeId ? [currentNodeId] : []);
+      trail.forEach((id, idx) => {
+        const node = getNodeById(id);
+        const span = document.createElement('span');
+        span.className = "crumb" + (idx === trail.length - 1 ? " current" : "");
+        span.textContent = node ? node.title : id;
+        span.title = "Go to: " + (node ? node.title : id);
+        span.tabIndex = 0;
+        span.addEventListener('click', () => jumpToIndex(idx));
+        span.addEventListener('keypress', (e)=>{ if(e.key === 'Enter' || e.key === ' ') jumpToIndex(idx); });
+        el.appendChild(span);
+      });
+    }
+
+    function jumpToIndex(idx){
+      const trail = historyStack.concat([currentNodeId]);
+      const targetId = trail[idx];
+      historyStack.length = 0;
+      for (let i = 0; i < idx; i++) historyStack.push(trail[i]);
+      currentNodeId = targetId;
+      render();
+    }
+
+    function renderNode(node){
+      $("nodeTypeText").textContent = isEndNode(node) ? "Outcome" : " ";
+      $("question").textContent = node.title;
+      $("content").innerHTML = sanitize(node.content || "");
+      $("chips").innerHTML = "";
+      (node.tags || []).forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = "chip";
+        chip.textContent = tag;
+        $("chips").appendChild(chip);
+      });
+
+      const opts = $("options");
+      opts.innerHTML = "";
+      if (node.options && node.options.length) {
+        node.options.forEach(opt => {
+          const li = document.createElement('div');
+          li.className = "option";
+          li.setAttribute("role", "listitem");
+          const label = document.createElement('div');
+          label.className = "label";
+          label.textContent = opt.label;
+          const go = document.createElement('button');
+          go.className = "go";
+          go.setAttribute("aria-label", `Choose: ${opt.label}`);
+          go.textContent = "Go →";
+          go.addEventListener('click', ()=> navigate(opt.nextId));
+          li.appendChild(label);
+          li.appendChild(go);
+          opts.appendChild(li);
+        });
+      } else {
+        const done = document.createElement('div');
+        done.className = "option";
+        done.innerHTML = `<div class="label">You’ve reached an outcome.</div><div class="go">Restart or go back</div>`;
+        opts.appendChild(done);
+      }
+    }
+
+    function navigate(nextId){
+      if (!nextId) return;
+      if (currentNodeId) historyStack.push(currentNodeId);
+      currentNodeId = nextId;
+      render();
+    }
+
+    function goBack(){
+      if (historyStack.length === 0) return;
+      currentNodeId = historyStack.pop();
+      render();
+    }
+
+    function goHome(){
+      historyStack.length = 0;
+      currentNodeId = decisionTreeData.meta.start;
+      render();
+    }
+
+    function render(){
+      const node = getNodeById(currentNodeId) || getNodeById(decisionTreeData.meta.start);
+      currentNodeId = node.id;
+      $("appTitle").textContent = decisionTreeData.meta.title || "Troubleshooting Guide";
+      $("footer").textContent = decisionTreeData.meta.footer || "";
+      renderNode(node);
+      renderBreadcrumb();
+      updateNavButtons();
+      $("results").classList.add("hidden");
+      $("hits").textContent = "";
+    }
+
+    function updateNavButtons(){
+      $("backBtn").disabled = historyStack.length === 0;
+    }
+
+    function searchNodes(query){
+      const q = query.trim().toLowerCase();
+      if (!q) return [];
+      return decisionTreeData.nodes
+        .map(n => ({ node: n, hay: (n.title + " " + (n.content || "") + " " + (n.tags || []).join(" ")).toLowerCase() }))
+        .filter(x => x.hay.includes(q))
+        .map(x => x.node);
+    }
+
+    function showSearchResults(list, query){
+      const results = $("results");
+      results.innerHTML = "";
+      if (list.length === 0){
+        $("hits").textContent = query ? `No matches for “${query}”` : "";
+        results.classList.add("hidden");
+        return;
+      }
+      $("hits").textContent = `${list.length} match${list.length>1?"es":""} for “${query}”`;
+      list.forEach(n => {
+        const r = document.createElement("div");
+        r.className = "result";
+        r.innerHTML = `<strong>${n.title}</strong><div class="content">${sanitize(n.content).slice(0,180)}${(n.content||"").length>180?"…":""}</div>`;
+        r.addEventListener('click', ()=> { historyStack.push(currentNodeId); currentNodeId = n.id; render(); });
+        results.appendChild(r);
+      });
+      results.classList.remove("hidden");
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.altKey && e.key.toLowerCase() === 'h') { goHome(); }
+      if ((e.altKey && e.key === 'ArrowLeft') || e.key === 'Escape') { goBack(); }
+    });
+
+    $("backBtn").addEventListener('click', goBack);
+    $("homeBtn").addEventListener('click', goHome);
+    $("searchClear").addEventListener('click', ()=>{ $("searchInput").value=""; $("results").classList.add("hidden"); $("hits").textContent=""; $("searchInput").focus(); });
+    $("searchInput").addEventListener('input', (e)=>{ const q = e.target.value; const list = searchNodes(q); showSearchResults(list, q); });
+
+    currentNodeId = (decisionTreeData.meta && decisionTreeData.meta.start) || "start";
+    render();
+  </script>
+</body>
+</html>
