@@ -42,6 +42,13 @@
     .result:hover { border-color: var(--accent); }
     @media (min-width: 700px) { .options { flex-direction: row; flex-wrap: wrap; } .option { width: calc(50% - 5px); } }
   </style>
+	<link rel="manifest" href="manifest.json">
+
+<script>
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js');
+}
+</script>
 </head>
 <body>
   <div class="wrap" role="application" aria-label="Interactive troubleshooting guide">
